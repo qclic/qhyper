@@ -4,7 +4,7 @@ ENTRY(_start)
 
 SECTIONS
 {
-    . = 0xE00000000000;
+    . = %KERNEL_VADDR% ;
     _skernel = .;
 
     .text : ALIGN(4K) {
@@ -59,7 +59,7 @@ SECTIONS
     . = ALIGN(4K);
     _edata = .;
 
-    .bss : ALIGN(4K) {
+    .bss (NOLOAD) : ALIGN(4K) {
         _sbss = .;
         *(.bss .bss.*)
         *(.sbss .sbss.*)
