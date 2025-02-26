@@ -1,5 +1,5 @@
 [workspace]
-members = ["xtask"]
+members = [ "qhyper","xtask"]
 resolver = "3"
 
 [workspace.package]

@@ -1,0 +1,6 @@
+[package]
+name = "qhyper"
+version.workspace = true
+edition.workspace = true
+
+[dependencies]
