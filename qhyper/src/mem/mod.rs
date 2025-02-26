@@ -13,7 +13,7 @@ extern "C" {
     fn _ebss();
 }
 
-pub(crate) unsafe fn clean_bss() {
+pub fn clean_bss() {
     let start = _sbss as *const u8 as usize;
     let end = _ebss as *const u8 as usize;
     let bss = unsafe { &mut *slice_from_raw_parts_mut(start as *mut u8, end - start) };

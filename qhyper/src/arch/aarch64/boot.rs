@@ -2,7 +2,7 @@ use core::arch::{asm, naked_asm};
 
 use aarch64_cpu::registers::*;
 
-use crate::mem::VM_VA_OFFSET;
+use crate::mem::{self, VM_VA_OFFSET};
 
 const FLAG_LE: usize = 0b0;
 const FLAG_PAGE_SIZE_4K: usize = 0b10;
@@ -56,10 +56,13 @@ unsafe extern "C" fn primary_entry() -> ! {
             // clear icache
             "ic  iallu",
             "BL       {switch_to_el2}",
-
+            "BL       {clean_bss}",
+            "BL       {init_mmu}",
             va = sym VM_VA_OFFSET,
             this_func = sym primary_entry,
             switch_to_el2 = sym switch_to_el2,
+            clean_bss = sym mem::clean_bss,
+            init_mmu = sym init_mmu,
         )
     }
 }
