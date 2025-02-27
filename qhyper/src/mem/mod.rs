@@ -7,8 +7,17 @@ pub mod mmu;
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeap<32> = LockedHeap::<32>::empty();
 
-#[link_section = ".data"]
-pub static VM_VA_OFFSET: usize = 0x111;
+static mut VM_VA_OFFSET: usize = 0x111;
+
+pub unsafe fn set_va(va_offset: usize) {
+    unsafe {
+        VM_VA_OFFSET = va_offset;
+    }
+}
+
+pub fn va_offset() -> usize {
+    unsafe { VM_VA_OFFSET }
+}
 
 extern "C" {
     fn _stext();
@@ -49,6 +58,6 @@ pub fn stack() -> &'static [u8] {
     let mut start = _stack_bottom as *const u8;
     let end = _stack_top as *const u8 as usize;
     let len = end - start as usize;
-    start = unsafe { start.sub(VM_VA_OFFSET) };
+    // start = unsafe { start.sub(VM_VA_OFFSET) };
     unsafe { &*slice_from_raw_parts(start, len) }
 }

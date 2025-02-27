@@ -5,7 +5,7 @@ use aarch64_cpu::{asm::barrier, registers::*};
 use crate::{
     arch::{cache, mmu},
     debug::{self, dbg, dbg_hexln, dbgln},
-    mem::{self, VM_VA_OFFSET},
+    mem,
 };
 
 const FLAG_LE: usize = 0b0;
@@ -68,8 +68,8 @@ unsafe extern "C" fn primary_entry() -> ! {
             // clear icache
             "ic  iallu",
             "BL       {clean_bss}",
-            "LDR      x0,  ={va}",
-            "STR      x18, [x0]",
+            "MOV      x0,  x18",
+            "BL       {set_va}",
             "BL       {switch_to_el2}",
             "BL       {enable_fp}",
             "MOV      x0,  x19",
@@ -77,7 +77,7 @@ unsafe extern "C" fn primary_entry() -> ! {
             "BL       {setup_el2}",
             "MOV      x0,  x19",
             "BL       {mmu_init}",
-            va = sym VM_VA_OFFSET,
+            set_va = sym set_va,
             this_func = sym primary_entry,
             switch_to_el2 = sym switch_to_el2,
             clean_bss = sym mem::clean_bss,
@@ -90,9 +90,14 @@ unsafe extern "C" fn primary_entry() -> ! {
     }
 }
 
+fn set_va(va: usize) {
+    unsafe {
+        mem::set_va(va);
+    }
+}
+
 fn switch_to_el2() {
     SPSel.write(SPSel::SP::ELx);
-    SP_EL0.set(0);
     let current_el = CurrentEL.read(CurrentEL::EL);
     if current_el == 3 {
         SCR_EL3.write(
@@ -138,7 +143,7 @@ fn init_debug(fdt: *mut u8) {
     let fdt = fdt_parser::Fdt::from_ptr(NonNull::new(fdt).unwrap()).unwrap();
     debug::init_by_fdt(fdt);
     dbg("VA_OFFSET: ");
-    dbg_hexln(VM_VA_OFFSET as _);
+    dbg_hexln(mem::va_offset() as _);
 
     if CurrentEL.read(CurrentEL::EL) != 2 {
         debug::dbgln("Not in EL2!");
@@ -160,4 +165,10 @@ fn setup_el2() {
             + HCR_EL2::FMO::EnableVirtualFIQ // Physical FIQ Routing.
             + HCR_EL2::TSC::EnableTrapEl1SmcToEl2,
     );
+
+    unsafe extern "C" {
+        fn exception_vector_base();
+    }
+
+    VBAR_EL2.set(exception_vector_base as usize as _);
 }
