@@ -1,9 +1,10 @@
-use core::arch::{asm, naked_asm};
+use core::{arch::naked_asm, ptr::NonNull};
 
 use aarch64_cpu::{asm::barrier, registers::*};
 
 use crate::{
     arch::{cache, mmu},
+    debug,
     mem::{self, VM_VA_OFFSET},
 };
 
@@ -71,7 +72,9 @@ unsafe extern "C" fn primary_entry() -> ! {
             "STR      x18, [x0]",
             "BL       {switch_to_el2}",
             "BL       {enable_fp}",
-
+            "MOV      x0,  x19",
+            "BL       {init_debug}",
+            "BL       {setup_el2}",
             "MOV      x0,  x19",
             "BL       {mmu_init}",
             va = sym VM_VA_OFFSET,
@@ -80,6 +83,8 @@ unsafe extern "C" fn primary_entry() -> ! {
             clean_bss = sym mem::clean_bss,
             mmu_init = sym mmu::init,
             enable_fp = sym enable_fp,
+            init_debug = sym init_debug,
+            setup_el2 = sym setup_el2,
             cache_invalidate = sym cache::cache_invalidate,
         )
     }
@@ -103,6 +108,20 @@ fn switch_to_el2() {
         ELR_EL3.set(LR.get());
         aarch64_cpu::asm::eret();
     }
+
+    // Set EL1 to 64bit.
+    // Enable `IMO` and `FMO` to make sure that:
+    // * Physical IRQ interrupts are taken to EL2;
+    // * Virtual IRQ interrupts are enabled;
+    // * Physical FIQ interrupts are taken to EL2;
+    // * Virtual FIQ interrupts are enabled.
+    HCR_EL2.modify(
+        HCR_EL2::VM::Enable
+            + HCR_EL2::RW::EL1IsAarch64
+            + HCR_EL2::IMO::EnableVirtualIRQ // Physical IRQ Routing.
+            + HCR_EL2::FMO::EnableVirtualFIQ // Physical FIQ Routing.
+            + HCR_EL2::TSC::EnableTrapEl1SmcToEl2,
+    );
 }
 fn enable_fp() {
     CPACR_EL1.write(CPACR_EL1::FPEN::TrapNothing);
@@ -112,4 +131,30 @@ pub fn rust_main() {
     let a = 0;
     let b = 1;
     let c = a + b;
+}
+
+fn init_debug(fdt: *mut u8) {
+    let fdt = fdt_parser::Fdt::from_ptr(NonNull::new(fdt).unwrap()).unwrap();
+    debug::init_by_fdt(fdt);
+
+    if CurrentEL.read(CurrentEL::EL) != 2 {
+        debug::dbgln("Not in EL2!");
+        panic!("");
+    }
+}
+
+fn setup_el2() {
+    // Set EL1 to 64bit.
+    // Enable `IMO` and `FMO` to make sure that:
+    // * Physical IRQ interrupts are taken to EL2;
+    // * Virtual IRQ interrupts are enabled;
+    // * Physical FIQ interrupts are taken to EL2;
+    // * Virtual FIQ interrupts are enabled.
+    HCR_EL2.modify(
+        HCR_EL2::VM::Enable
+            + HCR_EL2::RW::EL1IsAarch64
+            + HCR_EL2::IMO::EnableVirtualIRQ // Physical IRQ Routing.
+            + HCR_EL2::FMO::EnableVirtualFIQ // Physical FIQ Routing.
+            + HCR_EL2::TSC::EnableTrapEl1SmcToEl2,
+    );
 }

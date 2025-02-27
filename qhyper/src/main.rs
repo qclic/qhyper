@@ -7,5 +7,8 @@ extern crate alloc;
 
 #[cfg_attr(target_arch = "aarch64", path = "arch/aarch64/mod.rs")]
 pub mod arch;
+pub mod debug;
 mod lang_items;
+pub mod logger;
 pub mod mem;
+pub mod time;

@@ -142,6 +142,7 @@ impl PTEArch for PageTableImpl {
 
 use crate::{
     arch::boot::rust_main,
+    debug::{dbg, dbg_hex, dbg_range, dbgln, reg_base},
     mem::{self, stack, VM_VA_OFFSET},
 };
 
@@ -161,6 +162,8 @@ impl Access for TableAlloc {
 }
 
 pub fn init(dtb: *const u8) -> ! {
+    dbgln("init page table");
+
     MAIRDefault::mair_el2_apply();
 
     let mut access = TableAlloc(Heap::<32>::new());
@@ -178,6 +181,7 @@ pub fn init(dtb: *const u8) -> ! {
             mem::text(),
             AccessSetting::Read | AccessSetting::Execute,
             &mut access,
+            ".text  ",
         );
 
         map_k_range(
@@ -185,6 +189,7 @@ pub fn init(dtb: *const u8) -> ! {
             mem::rodata(),
             AccessSetting::Read | AccessSetting::Execute,
             &mut access,
+            ".rodata",
         );
 
         map_k_range(
@@ -192,6 +197,7 @@ pub fn init(dtb: *const u8) -> ! {
             mem::data(),
             AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
             &mut access,
+            ".data  ",
         );
 
         map_k_range(
@@ -199,6 +205,7 @@ pub fn init(dtb: *const u8) -> ! {
             mem::bss(),
             AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
             &mut access,
+            ".bss   ",
         );
 
         table
@@ -215,6 +222,21 @@ pub fn init(dtb: *const u8) -> ! {
             )
             .unwrap();
 
+        let debug_reg = reg_base();
+        table
+            .map_region(
+                MapConfig::new(
+                    debug_reg as _,
+                    debug_reg,
+                    AccessSetting::Read | AccessSetting::Write,
+                    CacheSetting::Device,
+                ),
+                0x1000,
+                true,
+                &mut access,
+            )
+            .unwrap();
+
         fence(Ordering::SeqCst);
 
         // Enable page size = 4K, vaddr size = 48 bits, paddr size = 40 bits.
@@ -223,9 +245,9 @@ pub fn init(dtb: *const u8) -> ! {
             + TCR_EL2::ORGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
             + TCR_EL2::IRGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
             + TCR_EL2::T0SZ.val(16);
-        TCR_EL2.write(TCR_EL2::PS::Bits_40 + tcr_flags0);
+        TCR_EL2.write(TCR_EL2::PS::Bits_48 + tcr_flags0);
 
-        TTBR0_EL2.write(TTBR0_EL2::BADDR.val(table.paddr() as _));
+        TTBR0_EL2.set(table.paddr() as _);
 
         barrier::isb(barrier::SY);
         asm!("tlbi vmalle1");
@@ -252,9 +274,22 @@ fn map_k_range(
     range: &[u8],
     privilege_access: AccessSetting,
     access: &mut TableAlloc,
+    name: &str,
 ) {
     let vaddr = range.as_ptr();
     let paddr = vaddr as usize - VM_VA_OFFSET;
+
+    dbg("map ");
+    dbg(name);
+    dbg(": [");
+    dbg_hex(vaddr as usize as _);
+    dbg(", ");
+    dbg_hex((vaddr as usize + range.len()) as _);
+    dbg(") -> [");
+    dbg_hex(paddr as _);
+    dbg(", ");
+    dbg_hex((paddr + range.len()) as _);
+    dbgln(")");
 
     unsafe {
         table
