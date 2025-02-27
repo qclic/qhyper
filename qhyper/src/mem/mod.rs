@@ -1,6 +1,7 @@
-use core::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut};
+use core::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut, NonNull};
 
 use buddy_system_allocator::LockedHeap;
+use fdt_parser::Fdt;
 
 pub mod mmu;
 
@@ -8,8 +9,35 @@ pub mod mmu;
 static HEAP_ALLOCATOR: LockedHeap<32> = LockedHeap::<32>::empty();
 
 static mut VM_VA_OFFSET: usize = 0x111;
+static mut FDT_ADDR: usize = 0;
+static mut FDT_LEN: usize = 0;
 
-pub unsafe fn set_va(va_offset: usize) {
+pub(crate) unsafe fn set_fdt(ptr: *mut u8, len: usize) {
+    unsafe {
+        FDT_ADDR = ptr as usize;
+        FDT_LEN = len;
+    }
+}
+
+pub fn fdt_data() -> &'static [u8] {
+    unsafe {
+        if FDT_LEN == 0 {
+            return &[];
+        }
+        &*slice_from_raw_parts(FDT_ADDR as _, FDT_LEN)
+    }
+}
+
+pub(crate) fn get_fdt() -> Option<Fdt<'static>> {
+    unsafe {
+        if FDT_LEN == 0 {
+            return None;
+        }
+        Fdt::from_ptr(NonNull::new(FDT_ADDR as _)?).ok()
+    }
+}
+
+pub(crate) unsafe fn set_va(va_offset: usize) {
     unsafe {
         VM_VA_OFFSET = va_offset;
     }
@@ -55,7 +83,7 @@ fn_ld_range!(data);
 fn_ld_range!(bss);
 
 pub fn stack() -> &'static [u8] {
-    let mut start = _stack_bottom as *const u8;
+    let start = _stack_bottom as *const u8;
     let end = _stack_top as *const u8 as usize;
     let len = end - start as usize;
     // start = unsafe { start.sub(VM_VA_OFFSET) };

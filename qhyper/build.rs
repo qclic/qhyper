@@ -3,8 +3,8 @@ use std::path::PathBuf;
 // 8MiB stack size per hart
 const DEFAULT_KERNEL_STACK_SIZE: usize = 8 * 1024 * 1024;
 
-const ENTRY_VADDR: u64 = 0x40200000;
-// const ENTRY_VADDR: u64 = 0xE00000000000;
+// const ENTRY_VADDR: u64 = 0x40200000;
+const ENTRY_VADDR: u64 = 0xE00000000000;
 
 fn main() {
     println!("cargo::rustc-link-arg=-Tlink.x");

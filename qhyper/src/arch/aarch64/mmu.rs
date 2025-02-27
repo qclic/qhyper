@@ -1,5 +1,6 @@
 use core::{
     arch::asm,
+    ptr::{slice_from_raw_parts, slice_from_raw_parts_mut},
     sync::atomic::{fence, Ordering},
 };
 
@@ -9,7 +10,6 @@ use aarch64_cpu::{
 };
 use buddy_system_allocator::Heap;
 use page_table_arm::*;
-use page_table_entry::{aarch64::A64PTE, GenericPTE, MappingFlags};
 use page_table_generic::*;
 
 use crate::{
@@ -17,12 +17,6 @@ use crate::{
     debug::{dbg, dbg_hex, dbg_hexln, dbg_mem, dbg_range, dbgln, reg_range},
     mem::{self, stack, va_offset},
 };
-
-#[unsafe(link_section = ".data")]
-static mut BOOT_PT_L0: [A64PTE; 512] = [A64PTE::empty(); 512];
-
-#[unsafe(link_section = ".data")]
-static mut BOOT_PT_L1: [A64PTE; 512] = [A64PTE::empty(); 512];
 
 struct TableAlloc(Heap<32>);
 impl Access for TableAlloc {
@@ -39,7 +33,7 @@ impl Access for TableAlloc {
     }
 }
 
-pub fn init(dtb: *const u8) -> ! {
+pub fn init() -> ! {
     fence(Ordering::SeqCst);
     dbgln("init page table");
 
@@ -57,50 +51,43 @@ pub fn init(dtb: *const u8) -> ! {
 
         let mut table = PageTableRef::<PageTableImpl>::create_empty(&mut access).unwrap();
 
-        map_k_range(
-            &mut table,
-            mem::text(),
-            AccessSetting::Read | AccessSetting::Execute,
-            &mut access,
-            ".text  ",
-            true,
-        );
+        if va_offset() > 0 {
+            map_k_range(
+                &mut table,
+                mem::text(),
+                AccessSetting::Read | AccessSetting::Execute,
+                &mut access,
+                ".text  ",
+                true,
+            );
 
-        map_k_range(
-            &mut table,
-            mem::rodata(),
-            AccessSetting::Read | AccessSetting::Execute,
-            &mut access,
-            ".rodata",
-            true,
-        );
+            map_k_range(
+                &mut table,
+                mem::rodata(),
+                AccessSetting::Read | AccessSetting::Execute,
+                &mut access,
+                ".rodata",
+                true,
+            );
 
-        map_k_range(
-            &mut table,
-            mem::data(),
-            AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
-            &mut access,
-            ".data  ",
-            true,
-        );
+            map_k_range(
+                &mut table,
+                mem::data(),
+                AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
+                &mut access,
+                ".data  ",
+                true,
+            );
 
-        map_k_range(
-            &mut table,
-            mem::bss(),
-            AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
-            &mut access,
-            ".bss   ",
-            true,
-        );
-
-        map_k_range(
-            &mut table,
-            mem::stack(),
-            AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
-            &mut access,
-            "stack  ",
-            false,
-        );
+            map_k_range(
+                &mut table,
+                mem::bss(),
+                AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
+                &mut access,
+                ".bss   ",
+                true,
+            );
+        }
 
         map_range(
             &mut table,
@@ -111,6 +98,22 @@ pub fn init(dtb: *const u8) -> ! {
             "debug  ",
             false,
         );
+
+        if let Some(fdt) = mem::get_fdt() {
+            for memory in fdt.memory() {
+                for region in memory.regions() {
+                    map_range(
+                        &mut table,
+                        &*slice_from_raw_parts(region.address, region.size),
+                        AccessSetting::Read | AccessSetting::Write | AccessSetting::Execute,
+                        CacheSetting::Normal,
+                        &mut access,
+                        "memory ",
+                        false,
+                    );
+                }
+            }
+        }
 
         // Enable page size = 4K, vaddr size = 48 bits, paddr size = 40 bits.
         TCR_EL2.write(
@@ -171,8 +174,8 @@ fn map_range(
     name: &str,
     offset: bool,
 ) {
-    let vaddr = range.as_ptr();
-    let paddr = vaddr as usize - if offset { va_offset() } else { 0 };
+    let paddr = range.as_ptr() as usize;
+    let vaddr = (paddr + if offset { va_offset() } else { 0 }) as *const u8;
 
     dbg("map ");
     dbg(name);
@@ -187,14 +190,14 @@ fn map_range(
     dbgln(")");
 
     unsafe {
-        table
-            .map_region(
-                MapConfig::new(vaddr, paddr, privilege_access, cache_setting),
-                range.len(),
-                true,
-                access,
-            )
-            .unwrap();
+        if let Err(_e) = table.map_region(
+            MapConfig::new(vaddr, paddr, privilege_access, cache_setting),
+            range.len(),
+            true,
+            access,
+        ) {
+            dbgln("map failed!");
+        }
     }
 }
 

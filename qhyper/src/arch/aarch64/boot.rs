@@ -1,11 +1,15 @@
-use core::{arch::naked_asm, ptr::NonNull};
+use core::{
+    arch::naked_asm,
+    ptr::{slice_from_raw_parts, slice_from_raw_parts_mut, NonNull},
+};
 
 use aarch64_cpu::{asm::barrier, registers::*};
+use fdt_parser::Fdt;
 
 use crate::{
     arch::{cache, mmu},
     debug::{self, dbg, dbg_hexln, dbgln},
-    mem,
+    mem::{self, stack},
 };
 
 const FLAG_LE: usize = 0b0;
@@ -75,7 +79,6 @@ unsafe extern "C" fn primary_entry() -> ! {
             "MOV      x0,  x19",
             "BL       {init_debug}",
             "BL       {setup_el2}",
-            "MOV      x0,  x19",
             "BL       {mmu_init}",
             set_va = sym set_va,
             this_func = sym primary_entry,
@@ -94,6 +97,22 @@ fn set_va(va: usize) {
     unsafe {
         mem::set_va(va);
     }
+}
+
+fn save_fdt<'a>(ptr: *mut u8) -> Option<Fdt<'a>> {
+    let stack_top = stack().as_ptr_range().end;
+    let fdt = fdt_parser::Fdt::from_ptr(NonNull::new(ptr)?).ok()?;
+    let len = fdt.total_size();
+
+    unsafe {
+        let dst = &mut *slice_from_raw_parts_mut(stack_top as usize as _, len);
+        let src = &*slice_from_raw_parts(ptr, len);
+        dst.copy_from_slice(src);
+
+        mem::set_fdt(ptr, len);
+    }
+
+    mem::get_fdt()
 }
 
 fn switch_to_el2() {
@@ -139,8 +158,8 @@ pub fn rust_main() {
     let c = a + b;
 }
 
-fn init_debug(fdt: *mut u8) {
-    let fdt = fdt_parser::Fdt::from_ptr(NonNull::new(fdt).unwrap()).unwrap();
+fn init_debug(fdt: *mut u8) -> Option<()> {
+    let fdt = save_fdt(fdt)?;
     debug::init_by_fdt(fdt);
     dbg("VA_OFFSET: ");
     dbg_hexln(mem::va_offset() as _);
@@ -149,6 +168,7 @@ fn init_debug(fdt: *mut u8) {
         debug::dbgln("Not in EL2!");
         panic!("");
     }
+    Some(())
 }
 
 fn setup_el2() {
