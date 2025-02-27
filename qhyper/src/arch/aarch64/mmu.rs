@@ -1,6 +1,6 @@
 use core::{
     arch::asm,
-    ptr::{slice_from_raw_parts, slice_from_raw_parts_mut},
+    ptr::slice_from_raw_parts,
     sync::atomic::{fence, Ordering},
 };
 
@@ -14,7 +14,7 @@ use page_table_generic::*;
 
 use crate::{
     arch::boot::rust_main,
-    debug::{dbg, dbg_hex, dbg_hexln, dbg_mem, dbg_range, dbgln, reg_range},
+    debug::{dbg, dbg_hex, dbg_mem, dbgln, reg_range},
     mem::{self, stack, va_offset},
 };
 

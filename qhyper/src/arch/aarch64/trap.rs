@@ -1,7 +1,6 @@
 use core::arch::global_asm;
 
 use aarch64_cpu::registers::*;
-use page_table_entry::MappingFlags;
 
 use super::context::TrapFrame;
 
@@ -36,34 +35,16 @@ fn invalid_exception(tf: &TrapFrame, kind: TrapKind, source: TrapSource) {
 }
 
 #[unsafe(no_mangle)]
-fn handle_irq_exception(_tf: &TrapFrame) {
-  
-}
+fn handle_irq_exception(_tf: &TrapFrame) {}
 
 fn handle_instruction_abort(tf: &TrapFrame, iss: u64, is_user: bool) {
-    let mut access_flags = MappingFlags::EXECUTE;
-    if is_user {
-        access_flags |= MappingFlags::USER;
-    }
-
 
     // Only handle Translation fault and Permission fault
-   
 }
 
 fn handle_data_abort(tf: &TrapFrame, iss: u64, is_user: bool) {
     let wnr = (iss & (1 << 6)) != 0; // WnR: Write not Read
     let cm = (iss & (1 << 8)) != 0; // CM: Cache maintenance
-    let mut access_flags = if wnr & !cm {
-        MappingFlags::WRITE
-    } else {
-        MappingFlags::READ
-    };
-    if is_user {
-        access_flags |= MappingFlags::USER;
-    }
-
-
 }
 
 #[unsafe(no_mangle)]
@@ -71,9 +52,7 @@ fn handle_sync_exception(tf: &mut TrapFrame) {
     let esr = ESR_EL1.extract();
     let iss = esr.read(ESR_EL1::ISS);
     match esr.read_as_enum(ESR_EL1::EC) {
-        Some(ESR_EL1::EC::Value::SVC64) => {
-            
-        }
+        Some(ESR_EL1::EC::Value::SVC64) => {}
         Some(ESR_EL1::EC::Value::InstrAbortLowerEL) => handle_instruction_abort(tf, iss, true),
         Some(ESR_EL1::EC::Value::InstrAbortCurrentEL) => handle_instruction_abort(tf, iss, false),
         Some(ESR_EL1::EC::Value::DataAbortLowerEL) => handle_data_abort(tf, iss, true),
@@ -81,8 +60,6 @@ fn handle_sync_exception(tf: &mut TrapFrame) {
         Some(ESR_EL1::EC::Value::Brk64) => {
             tf.elr += 4;
         }
-        _ => {
-            
-        }
+        _ => {}
     }
 }
