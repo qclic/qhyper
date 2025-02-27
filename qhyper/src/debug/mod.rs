@@ -1,4 +1,4 @@
-use core::cell::UnsafeCell;
+use core::{cell::UnsafeCell, ptr::slice_from_raw_parts};
 
 use aux_mini::AuxMini;
 use fdt_parser::Fdt;
@@ -26,8 +26,8 @@ fn uart() -> &'static Uart {
     unsafe { &*UART.0.get() }
 }
 
-pub fn reg_base() -> usize {
-    unsafe { REG_BASE }
+pub fn reg_range() -> &'static [u8] {
+    unsafe { &*slice_from_raw_parts(REG_BASE as *const u8, 0x1000) }
 }
 
 pub fn put(byte: u8) {

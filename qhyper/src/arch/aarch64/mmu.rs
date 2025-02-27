@@ -142,7 +142,7 @@ impl PTEArch for PageTableImpl {
 
 use crate::{
     arch::boot::rust_main,
-    debug::{dbg, dbg_hex, dbg_range, dbgln, reg_base},
+    debug::{dbg, dbg_hex, dbg_range, dbgln, reg_range},
     mem::{self, stack, VM_VA_OFFSET},
 };
 
@@ -164,7 +164,7 @@ impl Access for TableAlloc {
 pub fn init(dtb: *const u8) -> ! {
     dbgln("init page table");
 
-    MAIRDefault::mair_el2_apply();
+    mair_el2_apply();
 
     let mut access = TableAlloc(Heap::<32>::new());
 
@@ -182,6 +182,7 @@ pub fn init(dtb: *const u8) -> ! {
             AccessSetting::Read | AccessSetting::Execute,
             &mut access,
             ".text  ",
+            true,
         );
 
         map_k_range(
@@ -190,6 +191,7 @@ pub fn init(dtb: *const u8) -> ! {
             AccessSetting::Read | AccessSetting::Execute,
             &mut access,
             ".rodata",
+            true,
         );
 
         map_k_range(
@@ -198,6 +200,7 @@ pub fn init(dtb: *const u8) -> ! {
             AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
             &mut access,
             ".data  ",
+            true,
         );
 
         map_k_range(
@@ -206,36 +209,27 @@ pub fn init(dtb: *const u8) -> ! {
             AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
             &mut access,
             ".bss   ",
+            true,
         );
 
-        table
-            .map_region(
-                MapConfig::new(
-                    stack_bottom as _,
-                    stack_bottom,
-                    AccessSetting::Read | AccessSetting::Write | AccessSetting::Execute,
-                    CacheSetting::Normal,
-                ),
-                stack_top - stack_bottom,
-                true,
-                &mut access,
-            )
-            .unwrap();
+        map_k_range(
+            &mut table,
+            mem::stack(),
+            AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
+            &mut access,
+            "stack  ",
+            false,
+        );
 
-        let debug_reg = reg_base();
-        table
-            .map_region(
-                MapConfig::new(
-                    debug_reg as _,
-                    debug_reg,
-                    AccessSetting::Read | AccessSetting::Write,
-                    CacheSetting::Device,
-                ),
-                0x1000,
-                true,
-                &mut access,
-            )
-            .unwrap();
+        map_range(
+            &mut table,
+            reg_range(),
+            AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
+            CacheSetting::Device,
+            &mut access,
+            "debug  ",
+            false,
+        );
 
         fence(Ordering::SeqCst);
 
@@ -245,11 +239,12 @@ pub fn init(dtb: *const u8) -> ! {
             + TCR_EL2::ORGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
             + TCR_EL2::IRGN0::WriteBack_ReadAlloc_WriteAlloc_Cacheable
             + TCR_EL2::T0SZ.val(16);
-        TCR_EL2.write(TCR_EL2::PS::Bits_48 + tcr_flags0);
+        TCR_EL2.write(TCR_EL2::PS::Bits_40 + tcr_flags0);
 
         TTBR0_EL2.set(table.paddr() as _);
 
         barrier::isb(barrier::SY);
+
         asm!("tlbi vmalle1");
         isb(SY);
         dsb(NSH);
@@ -275,9 +270,30 @@ fn map_k_range(
     privilege_access: AccessSetting,
     access: &mut TableAlloc,
     name: &str,
+    offset: bool,
+) {
+    map_range(
+        table,
+        range,
+        privilege_access,
+        CacheSetting::Normal,
+        access,
+        name,
+        offset,
+    );
+}
+
+fn map_range(
+    table: &mut PageTableRef<PageTableImpl>,
+    range: &[u8],
+    privilege_access: AccessSetting,
+    cache_setting: CacheSetting,
+    access: &mut TableAlloc,
+    name: &str,
+    offset: bool,
 ) {
     let vaddr = range.as_ptr();
-    let paddr = vaddr as usize - VM_VA_OFFSET;
+    let paddr = vaddr as usize - if offset { VM_VA_OFFSET } else { 0 };
 
     dbg("map ");
     dbg(name);
@@ -294,11 +310,22 @@ fn map_k_range(
     unsafe {
         table
             .map_region(
-                MapConfig::new(vaddr, paddr, privilege_access, CacheSetting::Normal),
+                MapConfig::new(vaddr, paddr, privilege_access, cache_setting),
                 range.len(),
-                false,
+                true,
                 access,
             )
             .unwrap();
     }
+}
+
+fn mair_el2_apply() {
+    let attr0 = MAIR_EL2::Attr0_Device::nonGathering_nonReordering_noEarlyWriteAck;
+    // Normal memory
+    let attr1 = MAIR_EL2::Attr1_Normal_Inner::WriteBack_NonTransient_ReadWriteAlloc
+        + MAIR_EL2::Attr1_Normal_Outer::WriteBack_NonTransient_ReadWriteAlloc;
+    let attr2 = MAIR_EL2::Attr2_Normal_Inner::NonCacheable
+        + MAIR_EL2::Attr2_Normal_Outer::NonCacheable;
+
+    MAIR_EL2.write(attr0 + attr1 + attr2);
 }

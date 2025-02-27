@@ -4,7 +4,7 @@ use aarch64_cpu::{asm::barrier, registers::*};
 
 use crate::{
     arch::{cache, mmu},
-    debug,
+    debug::{self, dbg, dbg_hexln, dbgln},
     mem::{self, VM_VA_OFFSET},
 };
 
@@ -128,6 +128,7 @@ fn enable_fp() {
     barrier::isb(barrier::SY);
 }
 pub fn rust_main() {
+    dbgln("mmu enabled");
     let a = 0;
     let b = 1;
     let c = a + b;
@@ -136,6 +137,8 @@ pub fn rust_main() {
 fn init_debug(fdt: *mut u8) {
     let fdt = fdt_parser::Fdt::from_ptr(NonNull::new(fdt).unwrap()).unwrap();
     debug::init_by_fdt(fdt);
+    dbg("VA_OFFSET: ");
+    dbg_hexln(VM_VA_OFFSET as _);
 
     if CurrentEL.read(CurrentEL::EL) != 2 {
         debug::dbgln("Not in EL2!");
