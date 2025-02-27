@@ -1,8 +1,11 @@
 use core::arch::{asm, naked_asm};
 
-use aarch64_cpu::registers::*;
+use aarch64_cpu::{asm::barrier, registers::*};
 
-use crate::mem::{self, VM_VA_OFFSET};
+use crate::{
+    arch::{cache, mmu},
+    mem::{self, VM_VA_OFFSET},
+};
 
 const FLAG_LE: usize = 0b0;
 const FLAG_PAGE_SIZE_4K: usize = 0b10;
@@ -47,22 +50,37 @@ unsafe extern "C" fn primary_entry() -> ! {
             "ADR      x11, .",
             "LDR      x10, ={this_func}",
             "SUB      x18, x10, x11", // x18 = va_offset
-            "LDR      x20,  ={va}",
-            "STR      x18, [x20]",
             "MOV      x19, x0",        // x19 = dtb_addr
+            // disable cache and MMU
+            "mrs x1, sctlr_el2",
+            "bic x1, x1, #0xf",
+            "msr sctlr_el2, x1",
+            // setup stack
             "LDR      x1,  =_stack_top",
             "SUB      x1,  x1, x18", // X1 == STACK_TOP
             "MOV      sp,  x1",
+            // cache_invalidate(0): clear dl1$
+            "mov x0, #0",
+            "bl  {cache_invalidate}",
+            "mov x0, #2",
+            "bl  {cache_invalidate}",
             // clear icache
             "ic  iallu",
-            "BL       {switch_to_el2}",
             "BL       {clean_bss}",
-            "BL       {init_mmu}",
+            "LDR      x0,  ={va}",
+            "STR      x18, [x0]",
+            "BL       {switch_to_el2}",
+            "BL       {enable_fp}",
+
+            "MOV      x0,  x19",
+            "BL       {mmu_init}",
             va = sym VM_VA_OFFSET,
             this_func = sym primary_entry,
             switch_to_el2 = sym switch_to_el2,
             clean_bss = sym mem::clean_bss,
-            init_mmu = sym init_mmu,
+            mmu_init = sym mmu::init,
+            enable_fp = sym enable_fp,
+            cache_invalidate = sym cache::cache_invalidate,
         )
     }
 }
@@ -72,33 +90,26 @@ fn switch_to_el2() {
     SP_EL0.set(0);
     let current_el = CurrentEL.read(CurrentEL::EL);
     if current_el == 3 {
-        // Set EL2 to 64bit and enable the HVC instruction.
         SCR_EL3.write(
             SCR_EL3::NS::NonSecure + SCR_EL3::HCE::HvcEnabled + SCR_EL3::RW::NextELIsAarch64,
         );
-        // Set the return address and exception level.
         SPSR_EL3.write(
-            SPSR_EL3::M::EL1h
+            SPSR_EL3::M::EL2h
                 + SPSR_EL3::D::Masked
                 + SPSR_EL3::A::Masked
                 + SPSR_EL3::I::Masked
                 + SPSR_EL3::F::Masked,
         );
-        unsafe {
-            asm!(
-                "
-            adr  x2,      {f}
-            msr  elr_el3, x2
-            eret
-            ",
-            f = sym primary_entry,
-            );
-        }
+        ELR_EL3.set(LR.get());
+        aarch64_cpu::asm::eret();
     }
 }
-
-fn init_mmu() {
-    let a = VM_VA_OFFSET;
+fn enable_fp() {
+    CPACR_EL1.write(CPACR_EL1::FPEN::TrapNothing);
+    barrier::isb(barrier::SY);
+}
+pub fn rust_main() {
+    let a = 0;
     let b = 1;
     let c = a + b;
 }

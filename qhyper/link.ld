@@ -26,13 +26,6 @@ SECTIONS
         . = ALIGN(4K);
         _erodata = .;
     } 
-
-    .driver.register : ALIGN(4K) {
-        _sdriver = .;
-        *(.driver.register .driver.register.*)
-        _edriver = .;
-        . = ALIGN(4K);
-    }
    
     .data : ALIGN(4K) {
         _sdata = .;

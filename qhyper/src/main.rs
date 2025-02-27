@@ -1,6 +1,7 @@
 #![no_std]
 #![no_main]
 #![feature(naked_functions)]
+#![feature(concat_idents)]
 
 extern crate alloc;
 
