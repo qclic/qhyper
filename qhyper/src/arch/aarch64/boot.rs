@@ -152,7 +152,7 @@ fn enable_fp() {
     CPACR_EL1.write(CPACR_EL1::FPEN::TrapNothing);
     barrier::isb(barrier::SY);
 }
-pub fn rust_main()->! {
+pub fn rust_main() -> ! {
     dbgln("mmu enabled");
 
     vm_main()
@@ -185,10 +185,4 @@ fn setup_el2() {
             + HCR_EL2::FMO::EnableVirtualFIQ // Physical FIQ Routing.
             + HCR_EL2::TSC::EnableTrapEl1SmcToEl2,
     );
-
-    unsafe extern "C" {
-        fn exception_vector_base();
-    }
-
-    VBAR_EL2.set(exception_vector_base as usize as _);
 }

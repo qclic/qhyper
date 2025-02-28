@@ -1,5 +1,8 @@
 mod boot;
 mod cache;
+pub mod context;
+mod cpu;
 mod mmu;
 mod trap;
-pub mod context;
+
+pub use trap::install_trap_vector;

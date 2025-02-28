@@ -18,9 +18,12 @@ pub mod logger;
 pub mod consts;
 pub mod io;
 pub mod mem;
+pub mod percpu;
 pub mod time;
 
 pub fn vm_main() -> ! {
+    arch::install_trap_vector();
+
     logger::init();
     info!("VM start");
 
