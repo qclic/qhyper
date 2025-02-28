@@ -1,0 +1,16 @@
+[compile]
+target = "aarch64-unknown-none"
+
+[compile.cargo]
+package = "qhyper"
+log_level = "Debug"
+rust_flags = ""
+features = []
+
+[compile.cargo.env]
+
+[qemu]
+machine = "virt,virtualization=on"
+cpu = "cortex-a53"
+graphic = false
+args = "-D target/qemu.log -d mmu,guest_errors,int"
