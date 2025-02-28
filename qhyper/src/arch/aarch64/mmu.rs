@@ -15,11 +15,11 @@ use page_table_generic::*;
 
 use crate::{
     arch::boot::rust_main,
-    debug::{dbg, dbg_hex, dbg_hexln, dbg_mem, dbg_tb, dbgln, reg_range},
+    debug::*,
     mem::{
         self, boot_stack, boot_stack_space,
         space::{Space, SPACE_SET},
-        stack, va_offset,
+        va_offset,
     },
 };
 
