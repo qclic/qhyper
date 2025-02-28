@@ -21,6 +21,12 @@ dependencies = [
 ]
 
 [[package]]
+name = "arrayvec"
+version = "0.7.6"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "7c02d123df017efcdfbd739ef81735b36c5ba83ec3c59c80a9d7ecc718f92e50"
+
+[[package]]
 name = "autocfg"
 version = "1.4.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -70,6 +76,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "30bde2b3dc3671ae49d8e2e9f044c7c005836e7a023ee57cffa25ab82764bb9e"
 
 [[package]]
+name = "memory_addr"
+version = "0.3.1"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "6f769efcf10b9dfb4c913bebb409cda77b1a3f072b249bf5465e250bcb30eb49"
+
+[[package]]
 name = "page-table-arm"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -106,9 +118,11 @@ version = "0.1.0"
 dependencies = [
  "aarch64-cpu",
  "ansi_rgb",
+ "arrayvec",
  "buddy_system_allocator",
  "fdt-parser",
  "log",
+ "memory_addr",
  "page-table-arm",
  "page-table-generic",
  "rgb",

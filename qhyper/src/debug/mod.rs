@@ -79,6 +79,13 @@ pub fn dbg(s: &str) {
     }
 }
 
+pub fn dbg_tb(s: &str, l: usize) {
+    let mut b = s.bytes();
+    for _ in 0..l {
+        put(b.next().unwrap_or(b' '));
+    }
+}
+
 pub fn dbgln(s: &str) {
     dbg(s);
     dbg("\r\n");

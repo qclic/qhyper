@@ -1,11 +1,17 @@
 use core::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut, NonNull};
 
+use arrayvec::ArrayVec;
 use buddy_system_allocator::LockedHeap;
 use fdt_parser::Fdt;
+use memory_addr::{pa_range, PhysAddrRange};
+use page_table_generic::{AccessSetting, CacheSetting};
+use space::Space;
 
-use crate::consts::KERNEL_STACK_SIZE;
+use crate::{arch, consts::KERNEL_STACK_SIZE};
 
+pub mod addr;
 pub mod mmu;
+pub mod space;
 
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeap<32> = LockedHeap::<32>::empty();
@@ -39,6 +45,49 @@ pub(crate) fn get_fdt() -> Option<Fdt<'static>> {
         }
         Fdt::from_ptr(NonNull::new(FDT_ADDR as _)?).ok()
     }
+}
+
+fn slice_to_phys_range(data: &[u8], offset: usize) -> PhysAddrRange {
+    let ptr_range = data.as_ptr_range();
+    let start = ptr_range.start as usize - offset;
+    let end = ptr_range.end as usize - offset;
+    pa_range!(start..end)
+}
+
+pub fn kernel_imag_spaces<const CAP: usize>() -> ArrayVec<Space, CAP> {
+    let is_virt = arch::is_mmu_enabled();
+    let k_offset = if is_virt { va_offset() } else { 0 };
+
+    let mut spaces = ArrayVec::<Space, CAP>::new();
+    spaces.push(Space {
+        name: ".text",
+        phys: slice_to_phys_range(text(), k_offset),
+        offset: va_offset(),
+        access: AccessSetting::Read | AccessSetting::Execute,
+        cache: CacheSetting::Normal,
+    });
+    spaces.push(Space {
+        name: ".rodata",
+        phys: slice_to_phys_range(rodata(), k_offset),
+        offset: va_offset(),
+        access: AccessSetting::Read | AccessSetting::Execute,
+        cache: CacheSetting::Normal,
+    });
+    spaces.push(Space {
+        name: ".data",
+        phys: slice_to_phys_range(data(), k_offset),
+        offset: va_offset(),
+        access: AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
+        cache: CacheSetting::Normal,
+    });
+    spaces.push(Space {
+        name: ".bss",
+        phys: slice_to_phys_range(bss(), k_offset),
+        offset: va_offset(),
+        access: AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
+        cache: CacheSetting::Normal,
+    });
+    spaces
 }
 
 pub(crate) unsafe fn set_va(va_offset: usize) {
@@ -90,8 +139,18 @@ pub fn boot_stack() -> &'static [u8] {
     let start = _stack_bottom as *const u8;
     let end = _stack_top as *const u8 as usize;
     let len = end - start as usize;
-    // start = unsafe { start.sub(VM_VA_OFFSET) };
     unsafe { &*slice_from_raw_parts(start, len) }
+}
+
+pub fn boot_stack_space() -> Space {
+    let offset = stack().as_ptr() as usize - boot_stack().as_ptr() as usize;
+    Space {
+        name: "stack0",
+        phys: slice_to_phys_range(boot_stack(), 0),
+        offset,
+        access: AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
+        cache: CacheSetting::Normal,
+    }
 }
 
 pub fn stack() -> &'static [u8] {

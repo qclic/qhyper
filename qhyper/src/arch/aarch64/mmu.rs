@@ -9,13 +9,18 @@ use aarch64_cpu::{
     registers::*,
 };
 use buddy_system_allocator::Heap;
+use memory_addr::pa_range;
 use page_table_arm::*;
 use page_table_generic::*;
 
 use crate::{
     arch::boot::rust_main,
-    debug::{dbg, dbg_hex, dbg_hexln, dbg_mem, dbgln, reg_range},
-    mem::{self, boot_stack, stack, va_offset},
+    debug::{dbg, dbg_hex, dbg_hexln, dbg_mem, dbg_tb, dbgln, reg_range},
+    mem::{
+        self, boot_stack, boot_stack_space,
+        space::{Space, SPACE_SET},
+        stack, va_offset,
+    },
 };
 
 struct TableAlloc(Heap<32>);
@@ -41,83 +46,53 @@ pub fn init() -> ! {
 
     let mut access = TableAlloc(Heap::<32>::new());
 
-    let stack_top = stack().as_ptr_range().end as usize;
-    let stack_phys = boot_stack().as_ptr_range().start as usize;
+    let stack_space = boot_stack_space();
+    let stack_top = stack_space.virt().end.as_usize();
+
+    // 临时用栈底储存页表项
+    let tmp_pt = stack_space.phys.start.as_usize();
 
     dbg_mem("stack", boot_stack());
+    dbg("tmp pt: ");
+    dbg_hexln(tmp_pt as _);
 
     unsafe {
-        access.0.init(stack_phys, 1024 * 1024);
+        let imag_spaces = mem::kernel_imag_spaces::<24>();
+        for one in imag_spaces {
+            SPACE_SET.push(one);
+        }
+        access.0.init(tmp_pt, 1024 * 1024);
 
         let mut table = PageTableRef::<PageTableImpl>::create_empty(&mut access).unwrap();
 
         if va_offset() > 0 {
-            map_k_range(
-                &mut table,
-                mem::text(),
-                AccessSetting::Read | AccessSetting::Execute,
-                &mut access,
-                ".text  ",
-                true,
-            );
-
-            map_k_range(
-                &mut table,
-                mem::rodata(),
-                AccessSetting::Read | AccessSetting::Execute,
-                &mut access,
-                ".rodata",
-                true,
-            );
-
-            map_k_range(
-                &mut table,
-                mem::data(),
-                AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
-                &mut access,
-                ".data  ",
-                true,
-            );
-
-            map_k_range(
-                &mut table,
-                mem::bss(),
-                AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
-                &mut access,
-                ".bss   ",
-                true,
-            );
+            for space in SPACE_SET.iter() {
+                map_space(&mut table, space, &mut access);
+            }
         }
 
-        map_range(
-            &mut table,
-            boot_stack(),
-            AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
-            CacheSetting::Normal,
-            &mut access,
-            "stack  ",
-            stack().as_ptr() as usize - boot_stack().as_ptr() as usize,
-        );
-        map_range(
+        map_space(&mut table, &stack_space, &mut access);
+        SPACE_SET.push(stack_space);
+
+        map_direct(
             &mut table,
             reg_range(),
-            AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
+            AccessSetting::Read | AccessSetting::Write,
             CacheSetting::Device,
             &mut access,
-            "debug  ",
-            0,
+            "debug",
         );
+
         if let Some(fdt) = mem::get_fdt() {
             for memory in fdt.memory() {
                 for region in memory.regions() {
-                    map_range(
+                    map_direct(
                         &mut table,
                         &*slice_from_raw_parts(region.address, region.size),
                         AccessSetting::Read | AccessSetting::Write | AccessSetting::Execute,
                         CacheSetting::Normal,
                         &mut access,
-                        "memory ",
-                        0,
+                        "memory",
                     );
                 }
             }
@@ -156,59 +131,55 @@ pub fn init() -> ! {
         )
     }
 }
-fn map_k_range(
-    table: &mut PageTableRef<PageTableImpl>,
-    range: &[u8],
-    privilege_access: AccessSetting,
-    access: &mut TableAlloc,
-    name: &str,
-    offset: bool,
-) {
-    map_range(
-        table,
-        range,
-        privilege_access,
-        CacheSetting::Normal,
-        access,
-        name,
-        if offset { va_offset() } else { 0 },
-    );
-}
 
-fn map_range(
-    table: &mut PageTableRef<PageTableImpl>,
-    range: &[u8],
-    privilege_access: AccessSetting,
-    cache_setting: CacheSetting,
-    access: &mut TableAlloc,
-    name: &str,
-    offset: usize,
-) {
-    let paddr = range.as_ptr() as usize;
-    let vaddr = (paddr + offset) as *const u8;
+fn map_space(table: &mut PageTableRef<PageTableImpl>, space: &Space, access: &mut TableAlloc) {
+    let paddr = space.phys.start.as_usize();
+    let vaddr = space.virt().start.as_ptr();
+    let len = space.phys.size();
 
     dbg("map ");
-    dbg(name);
+    dbg_tb(space.name, 12);
     dbg(": [");
     dbg_hex(vaddr as usize as _);
     dbg(", ");
-    dbg_hex((vaddr as usize + range.len()) as _);
+    dbg_hex(space.virt().end.as_usize() as _);
     dbg(") -> [");
     dbg_hex(paddr as _);
     dbg(", ");
-    dbg_hex((paddr + range.len()) as _);
+    dbg_hex(space.phys.end.as_usize() as _);
     dbgln(")");
 
     unsafe {
         if let Err(_e) = table.map_region(
-            MapConfig::new(vaddr, paddr, privilege_access, cache_setting),
-            range.len(),
+            MapConfig::new(vaddr, paddr, space.access, space.cache),
+            len,
             true,
             access,
         ) {
             dbgln("map failed!");
         }
     }
+}
+
+fn map_direct(
+    table: &mut PageTableRef<PageTableImpl>,
+    range: &[u8],
+    privilege_access: AccessSetting,
+    cache_setting: CacheSetting,
+    access: &mut TableAlloc,
+    name: &'static str,
+) {
+    map_space(
+        table,
+        &Space {
+            name,
+            phys: pa_range!(range.as_ptr_range().start as usize..range.as_ptr_range().end as usize),
+            offset: 0,
+            access: privilege_access,
+            cache: cache_setting,
+        },
+        access,
+    );
 }
 
 fn mair_el2_apply() {

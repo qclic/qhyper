@@ -14,12 +14,12 @@ impl GeneralRegisters {
     }
 }
 
-#[repr(C)]
-#[derive(Debug)]
-pub struct ArchCpu {
-    pub cpuid: usize,
-    pub power_on: bool,
-}
+// #[repr(C)]
+// #[derive(Debug)]
+// pub struct ArchCpu {
+//     pub cpuid: usize,
+//     pub power_on: bool,
+// }
 
 // impl ArchCpu {
 //     pub fn new(cpuid: usize) -> Self {
