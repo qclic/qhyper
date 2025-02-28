@@ -9,7 +9,7 @@ use fdt_parser::Fdt;
 use crate::{
     arch::{cache, mmu},
     debug::{self, dbg, dbg_hexln, dbgln},
-    mem::{self, stack},
+    mem::{self, boot_stack},
 };
 
 const FLAG_LE: usize = 0b0;
@@ -100,7 +100,7 @@ fn set_va(va: usize) {
 }
 
 fn save_fdt<'a>(ptr: *mut u8) -> Option<Fdt<'a>> {
-    let stack_top = stack().as_ptr_range().end;
+    let stack_top = boot_stack().as_ptr_range().end;
     let fdt = fdt_parser::Fdt::from_ptr(NonNull::new(ptr)?).ok()?;
     let len = fdt.total_size();
 

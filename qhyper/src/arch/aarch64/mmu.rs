@@ -14,8 +14,8 @@ use page_table_generic::*;
 
 use crate::{
     arch::boot::rust_main,
-    debug::{dbg, dbg_hex, dbg_mem, dbgln, reg_range},
-    mem::{self, stack, va_offset},
+    debug::{dbg, dbg_hex, dbg_hexln, dbg_mem, dbgln, reg_range},
+    mem::{self, boot_stack, stack, va_offset},
 };
 
 struct TableAlloc(Heap<32>);
@@ -42,12 +42,12 @@ pub fn init() -> ! {
     let mut access = TableAlloc(Heap::<32>::new());
 
     let stack_top = stack().as_ptr_range().end as usize;
-    let stack_bottom = stack().as_ptr_range().start as usize;
+    let stack_phys = boot_stack().as_ptr_range().start as usize;
 
-    dbg_mem("stack", stack());
+    dbg_mem("stack", boot_stack());
 
     unsafe {
-        access.0.init(stack_bottom, 1024 * 1024);
+        access.0.init(stack_phys, 1024 * 1024);
 
         let mut table = PageTableRef::<PageTableImpl>::create_empty(&mut access).unwrap();
 
@@ -91,14 +91,22 @@ pub fn init() -> ! {
 
         map_range(
             &mut table,
+            boot_stack(),
+            AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
+            CacheSetting::Normal,
+            &mut access,
+            "stack  ",
+            stack().as_ptr() as usize - boot_stack().as_ptr() as usize,
+        );
+        map_range(
+            &mut table,
             reg_range(),
             AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
             CacheSetting::Device,
             &mut access,
             "debug  ",
-            false,
+            0,
         );
-
         if let Some(fdt) = mem::get_fdt() {
             for memory in fdt.memory() {
                 for region in memory.regions() {
@@ -109,7 +117,7 @@ pub fn init() -> ! {
                         CacheSetting::Normal,
                         &mut access,
                         "memory ",
-                        false,
+                        0,
                     );
                 }
             }
@@ -130,6 +138,8 @@ pub fn init() -> ! {
         barrier::isb(barrier::SY);
 
         asm!("tlbi alle2is; dsb sy; isb");
+        dbg("sp: ");
+        dbg_hexln(stack_top as _);
 
         // Enable the MMU and turn on I-cache and D-cache
         SCTLR_EL2.modify(SCTLR_EL2::M::Enable + SCTLR_EL2::C::Cacheable + SCTLR_EL2::I::Cacheable);
@@ -161,7 +171,7 @@ fn map_k_range(
         CacheSetting::Normal,
         access,
         name,
-        offset,
+        if offset { va_offset() } else { 0 },
     );
 }
 
@@ -172,10 +182,10 @@ fn map_range(
     cache_setting: CacheSetting,
     access: &mut TableAlloc,
     name: &str,
-    offset: bool,
+    offset: usize,
 ) {
     let paddr = range.as_ptr() as usize;
-    let vaddr = (paddr + if offset { va_offset() } else { 0 }) as *const u8;
+    let vaddr = (paddr + offset) as *const u8;
 
     dbg("map ");
     dbg(name);

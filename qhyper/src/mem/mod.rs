@@ -3,6 +3,8 @@ use core::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut, NonNull};
 use buddy_system_allocator::LockedHeap;
 use fdt_parser::Fdt;
 
+use crate::consts::KERNEL_STACK_SIZE;
+
 pub mod mmu;
 
 #[global_allocator]
@@ -11,6 +13,8 @@ static HEAP_ALLOCATOR: LockedHeap<32> = LockedHeap::<32>::empty();
 static mut VM_VA_OFFSET: usize = 0x111;
 static mut FDT_ADDR: usize = 0;
 static mut FDT_LEN: usize = 0;
+
+const KERNEL_STACK_BOTTOM: usize = 0xE10000000000;
 
 pub(crate) unsafe fn set_fdt(ptr: *mut u8, len: usize) {
     unsafe {
@@ -82,10 +86,16 @@ fn_ld_range!(rodata);
 fn_ld_range!(data);
 fn_ld_range!(bss);
 
-pub fn stack() -> &'static [u8] {
+pub fn boot_stack() -> &'static [u8] {
     let start = _stack_bottom as *const u8;
     let end = _stack_top as *const u8 as usize;
     let len = end - start as usize;
     // start = unsafe { start.sub(VM_VA_OFFSET) };
+    unsafe { &*slice_from_raw_parts(start, len) }
+}
+
+pub fn stack() -> &'static [u8] {
+    let start = KERNEL_STACK_BOTTOM as *const u8;
+    let len = KERNEL_STACK_SIZE;
     unsafe { &*slice_from_raw_parts(start, len) }
 }
