@@ -3,7 +3,7 @@ use core::arch::global_asm;
 use aarch64_cpu::registers::*;
 use log::{error, trace};
 
-use crate::println;
+use crate::{arch::shutdown, println};
 
 use super::cpu::GeneralRegisters;
 
@@ -18,7 +18,7 @@ extern "C" {
 
 pub fn install_trap_vector() {
     // Set the trap vector.
-    VBAR_EL2.set(_trap_vector as _);
+    VBAR_EL2.set(_trap_vector as usize as _);
 }
 
 /*From hyp_vec->handle_vmexit x0:guest regs x1:exit_reason sp =stack_top-32*8*/
@@ -49,7 +49,7 @@ pub mod ExceptionType {
 fn arch_dump_exit(reason: u64) {
     //TODO hypervisor coredump
     error!("Unsupported Exit:{:#x?}, elr={:#x?}", reason, ELR_EL2.get());
-    loop {}
+    shutdown();
 }
 
 fn irqchip_handle_irq_el1() {
@@ -59,7 +59,7 @@ fn irqchip_handle_irq_el1() {
 
 fn irqchip_handle_irq_el2() {
     error!("irq not handle from el2");
-    loop {}
+    shutdown();
 }
 
 #[naked]
@@ -109,7 +109,7 @@ fn handle_trap_el2(_regs: &mut GeneralRegisters) {
                 "EL2 Exception: Data Abort, ELR_EL2: {:#x?}, ESR_EL2: {:#x?}, FAR_EL2: {:#x?}",
                 elr, esr, far
             );
-            loop {}
+            shutdown();
         }
         Some(ESR_EL2::EC::Value::InstrAbortCurrentEL) => {
             println!(
@@ -125,5 +125,5 @@ fn handle_trap_el2(_regs: &mut GeneralRegisters) {
             );
         }
     }
-    loop {}
+    shutdown();
 }
