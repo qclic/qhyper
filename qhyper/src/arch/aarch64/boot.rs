@@ -10,6 +10,7 @@ use crate::{
     arch::{cache, mmu},
     debug::{self, dbg, dbg_hexln, dbgln},
     mem::{self, boot_stack},
+    vm_main,
 };
 
 const FLAG_LE: usize = 0b0;
@@ -151,11 +152,10 @@ fn enable_fp() {
     CPACR_EL1.write(CPACR_EL1::FPEN::TrapNothing);
     barrier::isb(barrier::SY);
 }
-pub fn rust_main() {
+pub fn rust_main()->! {
     dbgln("mmu enabled");
-    let a = 0;
-    let b = 1;
-    let c = a + b;
+
+    vm_main()
 }
 
 fn init_debug(fdt: *mut u8) -> Option<()> {

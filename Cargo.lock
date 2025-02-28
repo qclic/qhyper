@@ -112,6 +112,7 @@ dependencies = [
  "page-table-arm",
  "page-table-generic",
  "rgb",
+ "spin",
 ]
 
 [[package]]
