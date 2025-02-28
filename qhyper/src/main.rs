@@ -18,6 +18,7 @@ pub mod logger;
 pub mod consts;
 pub mod io;
 pub mod mem;
+pub mod room;
 pub mod percpu;
 pub mod time;
 pub mod hypercall;
