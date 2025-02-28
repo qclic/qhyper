@@ -3,14 +3,15 @@ use core::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut, NonNull};
 use arrayvec::ArrayVec;
 use buddy_system_allocator::LockedHeap;
 use fdt_parser::Fdt;
-use memory_addr::{pa_range, PhysAddrRange};
+use memory_addr::{pa_range, MemoryAddr, PhysAddrRange};
 use page_table_generic::{AccessSetting, CacheSetting};
-use space::Space;
+use space::{Space, SPACE_SET};
 
 use crate::{arch, consts::KERNEL_STACK_SIZE};
 
 pub mod addr;
 pub mod mmu;
+pub mod once;
 pub mod space;
 
 #[global_allocator]
@@ -22,7 +23,45 @@ static mut FDT_LEN: usize = 0;
 
 const KERNEL_STACK_BOTTOM: usize = 0xE10000000000;
 
-pub(crate) unsafe fn set_fdt(ptr: *mut u8, len: usize) {
+pub fn init() {
+    let memory_used_end = SPACE_SET
+        .iter()
+        .max_by(|&x, &y| x.phys.end.cmp(&y.phys.end))
+        .map(|one| one.phys)
+        .expect("no space")
+        .end
+        .as_usize();
+
+    //TODO 非设备树平台
+    let fdt = get_fdt().unwrap();
+    for memory in fdt.memory() {
+        for region in memory.regions() {
+            let mut start = region.address as usize;
+            let end = start + region.size;
+
+            if start < memory_used_end && end > memory_used_end {
+                start = memory_used_end.align_up_4k();
+            }
+        }
+    }
+}
+
+pub(crate) unsafe fn save_fdt<'a>(ptr: *mut u8) -> Option<Fdt<'a>> {
+    let stack_top = boot_stack().as_ptr_range().end;
+    let fdt = fdt_parser::Fdt::from_ptr(NonNull::new(ptr)?).ok()?;
+    let len = fdt.total_size();
+
+    unsafe {
+        let dst = &mut *slice_from_raw_parts_mut(stack_top as usize as _, len);
+        let src = &*slice_from_raw_parts(ptr, len);
+        dst.copy_from_slice(src);
+
+        set_fdt(dst.as_mut_ptr(), len.align_up_4k());
+    }
+
+    get_fdt()
+}
+fn set_fdt(ptr: *mut u8, len: usize) {
     unsafe {
         FDT_ADDR = ptr as usize;
         FDT_LEN = len;
@@ -87,6 +126,16 @@ pub fn kernel_imag_spaces<const CAP: usize>() -> ArrayVec<Space, CAP> {
         access: AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
         cache: CacheSetting::Normal,
     });
+
+    if !fdt_data().is_empty() {
+        spaces.push(Space {
+            name: "fdt",
+            phys: slice_to_phys_range(fdt_data(), 0),
+            offset: 0,
+            access: AccessSetting::Read,
+            cache: CacheSetting::Normal,
+        });
+    }
     spaces
 }
 

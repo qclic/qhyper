@@ -1,15 +1,11 @@
-use core::{
-    arch::naked_asm,
-    ptr::{slice_from_raw_parts, slice_from_raw_parts_mut, NonNull},
-};
+use core::arch::naked_asm;
 
 use aarch64_cpu::{asm::barrier, registers::*};
-use fdt_parser::Fdt;
 
 use crate::{
     arch::{cache, mmu},
     debug::{self, dbg, dbg_hexln, dbgln},
-    mem::{self, boot_stack},
+    mem::{self},
     vm_main,
 };
 
@@ -100,22 +96,6 @@ fn set_va(va: usize) {
     }
 }
 
-fn save_fdt<'a>(ptr: *mut u8) -> Option<Fdt<'a>> {
-    let stack_top = boot_stack().as_ptr_range().end;
-    let fdt = fdt_parser::Fdt::from_ptr(NonNull::new(ptr)?).ok()?;
-    let len = fdt.total_size();
-
-    unsafe {
-        let dst = &mut *slice_from_raw_parts_mut(stack_top as usize as _, len);
-        let src = &*slice_from_raw_parts(ptr, len);
-        dst.copy_from_slice(src);
-
-        mem::set_fdt(ptr, len);
-    }
-
-    mem::get_fdt()
-}
-
 fn switch_to_el2() {
     SPSel.write(SPSel::SP::ELx);
     let current_el = CurrentEL.read(CurrentEL::EL);
@@ -159,7 +139,7 @@ pub fn rust_main() -> ! {
 }
 
 fn init_debug(fdt: *mut u8) -> Option<()> {
-    let fdt = save_fdt(fdt)?;
+    let fdt = unsafe { mem::save_fdt(fdt) }?;
     debug::init_by_fdt(fdt);
     dbg("VA_OFFSET: ");
     dbg_hexln(mem::va_offset() as _);

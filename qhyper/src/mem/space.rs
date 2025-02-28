@@ -1,16 +1,12 @@
-use core::cell::UnsafeCell;
-
 use arrayvec::ArrayVec;
 use memory_addr::VirtAddrRange;
 use page_table_generic::{AccessSetting, CacheSetting};
 
-use super::addr::PhysAddrRange;
+use super::{addr::PhysAddrRange, once::OnceStatic};
 
-pub static SPACE_SET: SpaceSet = SpaceSet(UnsafeCell::new(ArrayVec::new_const()));
+pub static SPACE_SET: SpaceSet = SpaceSet(OnceStatic::new(ArrayVec::new_const()));
 
-pub struct SpaceSet(UnsafeCell<ArrayVec<Space, 24>>);
-unsafe impl Send for SpaceSet {}
-unsafe impl Sync for SpaceSet {}
+pub struct SpaceSet(OnceStatic<ArrayVec<Space, 24>>);
 
 impl SpaceSet {
     pub(crate) unsafe fn push(&self, space: Space) {
@@ -18,10 +14,11 @@ impl SpaceSet {
     }
 
     pub fn iter(&self) -> impl Iterator<Item = &Space> {
-        unsafe { (*self.0.get()).iter() }
+        self.0.iter()
     }
 }
 
+#[derive(Clone, Copy)]
 pub struct Space {
     pub name: &'static str,
     pub phys: PhysAddrRange,

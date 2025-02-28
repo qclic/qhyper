@@ -1,7 +1,5 @@
 pub use memory_addr::*;
 
-use super::{bss, data, rodata, stack, text, VM_VA_OFFSET};
-
 pub trait VirtToPhys {
     fn to_phys(&self) -> PhysAddr;
 }
@@ -22,14 +20,10 @@ pub trait PhysToVirt {
 //             {
 //             VM_VA_OFFSET
 //         } else if stack().as_ptr_range().contains(ptr) {
-            
+
 //         } else {
 //             panic!("VirtToPhys: invalid pointer")
 //         };
 
-
 //     }
 // }
-
-
-
