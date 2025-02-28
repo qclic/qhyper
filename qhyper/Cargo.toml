@@ -12,6 +12,7 @@ rgb = "0.8"
 fdt-parser = "0.4"
 spin = "0.9"
 memory_addr = "0.3"
+numeric-enum-macro = "0.2"
 arrayvec = { version = "0.7", default-features = false }
 
 [target.'cfg(target_arch = "aarch64")'.dependencies]

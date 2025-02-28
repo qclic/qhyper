@@ -20,6 +20,8 @@ pub mod io;
 pub mod mem;
 pub mod percpu;
 pub mod time;
+pub mod hypercall;
+pub mod error;
 
 pub fn vm_main() -> ! {
     arch::install_trap_vector();

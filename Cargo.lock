@@ -82,6 +82,12 @@ source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "6f769efcf10b9dfb4c913bebb409cda77b1a3f072b249bf5465e250bcb30eb49"
 
 [[package]]
+name = "numeric-enum-macro"
+version = "0.2.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "300e4bdb6b46b592948e700ea1ef24a4296491f6a0ee722b258040abd15a3714"
+
+[[package]]
 name = "page-table-arm"
 version = "0.1.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -123,6 +129,7 @@ dependencies = [
  "fdt-parser",
  "log",
  "memory_addr",
+ "numeric-enum-macro",
  "page-table-arm",
  "page-table-generic",
  "rgb",
