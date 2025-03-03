@@ -7,8 +7,8 @@ mod trap;
 use aarch64_cpu::registers::*;
 pub use trap::install_trap_vector;
 
-pub fn shutdown() {
-    //TODO
+pub fn shutdown() -> ! {
+    unimplemented!()
 }
 
 pub fn is_mmu_enabled() -> bool {

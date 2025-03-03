@@ -1,7 +1,5 @@
 pub use memory_addr::*;
 
-use super::{bss, data, rodata, stack, text, VM_VA_OFFSET};
-
 pub trait VirtToPhys {
     fn to_phys(&self) -> PhysAddr;
 }
