@@ -1,4 +1,1 @@
-
-pub struct Room {
-
-}
+pub struct Room {}

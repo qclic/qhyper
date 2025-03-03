@@ -1,6 +1,8 @@
-use log::{info, warn, debug};
+use crate::device::virtio::VIRTIO_BRIDGE;
 use crate::error::HvError;
+use crate::mem::PAGE_SIZE_4K;
 use crate::percpu::PerCpu;
+use log::{debug, info, warn};
 numeric_enum_macro::numeric_enum! {
     #[repr(u64)]
     #[derive(Debug, Eq, PartialEq, Copy, Clone)]
@@ -35,10 +37,7 @@ impl<'live> HyperCall<'live> {
             }
         };
 
-        debug!(
-            "hypercall: code={:?}, arg0={:#x}, arg1={:#x}",
-            id, arg0, arg1
-        );
+        debug!("hypercall: id={:?}, arg0={:#x}, arg1={:#x}", id, arg0, arg1);
 
         unsafe {
             match id {
@@ -51,9 +50,14 @@ impl<'live> HyperCall<'live> {
         }
     }
 
-
     fn hv_virtio_init(&mut self, shared_region_addr: u64) -> HyperCallResult {
-
+        info!(
+            "handle hvc init virtio, shared_region_addr = {:#x?}",
+            shared_region_addr
+        );
+        let shared_region_addr_init = shared_region_addr as usize;
+        assert!(shared_region_addr_init % PAGE_SIZE_4K == 0);
+        VIRTIO_BRIDGE.lock().init_addr(shared_region_addr_init as _);
         HyperCallResult::Ok(0)
     }
 }

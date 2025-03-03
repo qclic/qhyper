@@ -28,8 +28,6 @@ pub struct HvError {
     pub msg: Option<String>,
 }
 
-
-
 impl HvErrorNum {
     pub fn as_str(&self) -> &'static str {
         use HvErrorNum::*;

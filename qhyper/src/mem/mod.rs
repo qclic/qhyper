@@ -21,6 +21,10 @@ static mut FDT_ADDR: usize = 0;
 static mut FDT_LEN: usize = 0;
 
 const KERNEL_STACK_BOTTOM: usize = 0xE10000000000;
+/// The size of a page.
+pub const PAGE_SIZE_4K: usize = 0x1000;
+pub const PAGE_SIZE_2M: usize = 0x20_0000;
+pub const PAGE_SIZE_1G: usize = 0x4000_0000;
 
 pub(crate) unsafe fn set_fdt(ptr: *mut u8, len: usize) {
     unsafe {

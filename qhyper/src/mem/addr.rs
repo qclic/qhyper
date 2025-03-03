@@ -22,14 +22,10 @@ pub trait PhysToVirt {
 //             {
 //             VM_VA_OFFSET
 //         } else if stack().as_ptr_range().contains(ptr) {
-            
+
 //         } else {
 //             panic!("VirtToPhys: invalid pointer")
 //         };
 
-
 //     }
 // }
-
-
-
