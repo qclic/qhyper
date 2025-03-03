@@ -1,12 +1,12 @@
 use core::{alloc::Layout, fmt::Display};
 
-use alloc::{collections::btree_map::BTreeMap, vec::Vec};
+use alloc::collections::btree_map::BTreeMap;
 use log::debug;
 use memory_addr::{pa_range, PhysAddrRange};
 
 use crate::{
     consts::STACK_SIZE,
-    mem::{get_fdt, once::OnceStatic, stack, stack0},
+    mem::{get_fdt, once::OnceStatic, stack0},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord)]
@@ -78,7 +78,11 @@ pub fn init() {
             } else {
                 let stack = alloc::alloc::alloc_zeroed(
                     Layout::from_size_align(STACK_SIZE, 0x1000).unwrap(),
-                ) as usize;
+                );
+                if stack.is_null() {
+                    panic!("alloc stack failed")
+                }
+                let stack = stack as usize;
                 pa_range!(stack..stack + STACK_SIZE)
             };
             (*PER_CPU.get()).insert(id, PerCpu { id, stack });
