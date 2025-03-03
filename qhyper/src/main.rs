@@ -16,13 +16,14 @@ mod lang_items;
 #[macro_use]
 pub mod logger;
 pub mod consts;
+pub mod device;
+pub mod error;
+pub mod hypercall;
 pub mod io;
 pub mod mem;
-pub mod room;
 pub mod percpu;
+pub mod room;
 pub mod time;
-pub mod hypercall;
-pub mod error;
 
 pub fn vm_main() -> ! {
     arch::install_trap_vector();

@@ -5,8 +5,4 @@ pub struct PerCpu {
     pub stack: [u8; STACK_SIZE],
 }
 
-
-
-pub fn init() {
-
-}
+pub fn init() {}
