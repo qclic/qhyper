@@ -31,6 +31,10 @@ pub fn vm_main() -> ! {
     logger::init();
     info!("VM start");
 
+    mem::init();
+
+    info!("mem setup ok");
+
     loop {
         spin_loop();
     }

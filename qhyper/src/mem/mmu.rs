@@ -1,15 +1,23 @@
 use buddy_system_allocator::Heap;
+use log::debug;
 use page_table_generic::Access;
 pub use page_table_generic::PTEGeneric;
 use spin::MutexGuard;
 
+use crate::percpu::cpu_data;
+
 use super::HEAP_ALLOCATOR;
 
 pub fn init() {
-    let access = HEAP_ALLOCATOR.lock();
+    let data = cpu_data();
+    debug!("Init cpu {} MMU", data.id);
+
+    let access = HeapGuard(HEAP_ALLOCATOR.lock());
+
+    
 }
 
-struct HeapGuard<'a> (MutexGuard<'a, Heap<32>>);
+struct HeapGuard<'a>(MutexGuard<'a, Heap<32>>);
 
 impl Access for HeapGuard<'_> {
     fn va_offset(&self) -> usize {

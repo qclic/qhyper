@@ -1,13 +1,21 @@
-use core::ptr::{slice_from_raw_parts, slice_from_raw_parts_mut, NonNull};
+use core::{
+    ptr::{null_mut, slice_from_raw_parts, slice_from_raw_parts_mut, NonNull},
+    sync::atomic::{AtomicPtr, AtomicUsize, Ordering},
+};
 
 use arrayvec::ArrayVec;
 use buddy_system_allocator::LockedHeap;
 use fdt_parser::Fdt;
+use log::info;
 use memory_addr::{pa_range, MemoryAddr, PhysAddrRange};
 use page_table_generic::{AccessSetting, CacheSetting};
 use space::{Space, SPACE_SET};
 
-use crate::{arch, consts::KERNEL_STACK_SIZE};
+use crate::{
+    arch::{self, is_mmu_enabled},
+    consts::KERNEL_STACK_SIZE,
+    percpu,
+};
 
 pub mod addr;
 pub mod mmu;
@@ -17,9 +25,9 @@ pub mod space;
 #[global_allocator]
 static HEAP_ALLOCATOR: LockedHeap<32> = LockedHeap::<32>::empty();
 
-static mut VM_VA_OFFSET: usize = 0x111;
-static mut FDT_ADDR: usize = 0;
-static mut FDT_LEN: usize = 0;
+static VM_VA_OFFSET: AtomicUsize = AtomicUsize::new(111);
+static FDT_ADDR: AtomicPtr<u8> = AtomicPtr::new(null_mut());
+static FDT_LEN: AtomicUsize = AtomicUsize::new(0);
 
 const KERNEL_STACK_BOTTOM: usize = 0xE10000000000;
 /// The size of a page.
@@ -35,6 +43,7 @@ pub fn init() {
         .expect("no space")
         .end
         .as_usize();
+    let mut inited = false;
 
     //TODO 非设备树平台
     let fdt = get_fdt().unwrap();
@@ -46,8 +55,26 @@ pub fn init() {
             if start < memory_used_end && end > memory_used_end {
                 start = memory_used_end.align_up_4k();
             }
+
+            let size = end - start;
+            info!(
+                "Add memory region [{:#x} - {:#x}), size: {:#x}",
+                start,
+                start + size,
+                size
+            );
+            unsafe {
+                if inited {
+                    HEAP_ALLOCATOR.lock().add_to_heap(start, size);
+                } else {
+                    HEAP_ALLOCATOR.lock().init(start, size);
+                    inited = true;
+                }
+            }
         }
     }
+    percpu::init();
+    mmu::init();
 }
 
 pub(crate) unsafe fn save_fdt<'a>(ptr: *mut u8) -> Option<Fdt<'a>> {
@@ -66,28 +93,27 @@ pub(crate) unsafe fn save_fdt<'a>(ptr: *mut u8) -> Option<Fdt<'a>> {
     get_fdt()
 }
 fn set_fdt(ptr: *mut u8, len: usize) {
-    unsafe {
-        FDT_ADDR = ptr as usize;
-        FDT_LEN = len;
-    }
+    FDT_ADDR.store(ptr, Ordering::SeqCst);
+    FDT_LEN.store(len, Ordering::SeqCst);
 }
 
 pub fn fdt_data() -> &'static [u8] {
     unsafe {
-        if FDT_LEN == 0 {
+        if FDT_LEN.load(Ordering::SeqCst) == 0 {
             return &[];
         }
-        &*slice_from_raw_parts(FDT_ADDR as _, FDT_LEN)
+        &*slice_from_raw_parts(
+            FDT_ADDR.load(Ordering::SeqCst),
+            FDT_LEN.load(Ordering::SeqCst),
+        )
     }
 }
 
 pub(crate) fn get_fdt() -> Option<Fdt<'static>> {
-    unsafe {
-        if FDT_LEN == 0 {
-            return None;
-        }
-        Fdt::from_ptr(NonNull::new(FDT_ADDR as _)?).ok()
+    if FDT_LEN.load(Ordering::SeqCst) == 0 {
+        return None;
     }
+    Fdt::from_ptr(NonNull::new(FDT_ADDR.load(Ordering::SeqCst))?).ok()
 }
 
 fn slice_to_phys_range(data: &[u8], offset: usize) -> PhysAddrRange {
@@ -144,13 +170,11 @@ pub fn kernel_imag_spaces<const CAP: usize>() -> ArrayVec<Space, CAP> {
 }
 
 pub(crate) unsafe fn set_va(va_offset: usize) {
-    unsafe {
-        VM_VA_OFFSET = va_offset;
-    }
+    VM_VA_OFFSET.store(va_offset, Ordering::SeqCst);
 }
 
 pub fn va_offset() -> usize {
-    unsafe { VM_VA_OFFSET }
+    VM_VA_OFFSET.load(Ordering::Relaxed)
 }
 
 extern "C" {
@@ -210,4 +234,9 @@ pub fn stack() -> &'static [u8] {
     let start = KERNEL_STACK_BOTTOM as *const u8;
     let len = KERNEL_STACK_SIZE;
     unsafe { &*slice_from_raw_parts(start, len) }
+}
+
+pub fn stack0() -> PhysAddrRange {
+    let offset = if is_mmu_enabled() { va_offset() } else { 0 };
+    slice_to_phys_range(boot_stack(), offset)
 }
