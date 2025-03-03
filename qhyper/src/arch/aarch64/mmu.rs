@@ -9,7 +9,7 @@ use aarch64_cpu::{
     registers::*,
 };
 use buddy_system_allocator::Heap;
-use memory_addr::pa_range;
+use memory_addr::{pa_range, VirtAddr};
 use page_table_arm::*;
 use page_table_generic::*;
 
@@ -17,11 +17,34 @@ use crate::{
     arch::boot::rust_main,
     debug::*,
     mem::{
-        self, boot_stack, boot_stack_space,
+        self, boot_stack, boot_stack_space, debug_space,
         space::{Space, SPACE_SET},
         va_offset,
     },
 };
+
+pub type TableRef<'a> = PageTableRef<'a, PageTableImpl>;
+
+pub fn get_table() -> TableRef<'static> {
+    PageTableRef::<PageTableImpl>::from_addr(
+        (TTBR0_EL2.read(TTBR0_EL2::BADDR) << 1) as usize,
+        PageTableImpl::level(),
+    )
+}
+
+pub fn set_table(table: TableRef<'_>) {
+    TTBR0_EL2.set(table.paddr() as _);
+}
+
+pub fn flush_table(addr: Option<VirtAddr>) {
+    unsafe {
+        if let Some(_addr) = addr {
+            todo!()
+        } else {
+            asm!("tlbi alle2is; dsb sy; isb");
+        }
+    }
+}
 
 struct TableAlloc(Heap<32>);
 impl Access for TableAlloc {
@@ -74,14 +97,9 @@ pub fn init() -> ! {
         map_space(&mut table, &stack_space, &mut access);
         SPACE_SET.push(stack_space);
 
-        map_direct(
-            &mut table,
-            reg_range(),
-            AccessSetting::Read | AccessSetting::Write,
-            CacheSetting::Device,
-            &mut access,
-            "debug",
-        );
+        let debug_space = debug_space();
+        map_space(&mut table, &debug_space, &mut access);
+        SPACE_SET.push(debug_space);
 
         if let Some(fdt) = mem::get_fdt() {
             for memory in fdt.memory() {

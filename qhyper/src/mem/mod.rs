@@ -14,7 +14,7 @@ use space::{Space, SPACE_SET};
 use crate::{
     arch::{self, is_mmu_enabled},
     consts::KERNEL_STACK_SIZE,
-    percpu,
+    debug, percpu,
 };
 
 pub mod addr;
@@ -63,6 +63,7 @@ pub fn init() {
                 start + size,
                 size
             );
+
             unsafe {
                 if inited {
                     HEAP_ALLOCATOR.lock().add_to_heap(start, size);
@@ -70,6 +71,14 @@ pub fn init() {
                     HEAP_ALLOCATOR.lock().init(start, size);
                     inited = true;
                 }
+
+                SPACE_SET.push(Space {
+                    name: "heap",
+                    phys: pa_range!(start..end),
+                    offset: 0,
+                    access: AccessSetting::Read | AccessSetting::Execute | AccessSetting::Write,
+                    cache: CacheSetting::Normal,
+                });
             }
         }
     }
@@ -239,4 +248,13 @@ pub fn stack() -> &'static [u8] {
 pub fn stack0() -> PhysAddrRange {
     let offset = if is_mmu_enabled() { va_offset() } else { 0 };
     slice_to_phys_range(boot_stack(), offset)
+}
+pub fn debug_space() -> Space {
+    Space {
+        name: "debug",
+        phys: slice_to_phys_range(debug::reg_range(), 0),
+        offset: 0,
+        access: AccessSetting::Read | AccessSetting::Write,
+        cache: CacheSetting::Device,
+    }
 }

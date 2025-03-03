@@ -1,7 +1,7 @@
 mod boot;
 mod cache;
 mod cpu;
-mod mmu;
+pub mod mmu;
 mod trap;
 
 use core::hint::spin_loop;

@@ -3,6 +3,8 @@ use core::{cell::UnsafeCell, ptr::slice_from_raw_parts};
 use aux_mini::AuxMini;
 use fdt_parser::Fdt;
 use pl011::Pl011;
+
+use crate::mem::space::Space;
 mod aux_mini;
 mod pl011;
 
